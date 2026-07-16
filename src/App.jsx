@@ -327,7 +327,7 @@ function App() {
 
         <div className="w-full">
           <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="guess">
-            Tvoj tip
+            Tvůj tip
           </label>
           <div className="relative">
             <input
