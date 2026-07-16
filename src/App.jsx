@@ -68,10 +68,21 @@ const slugify = (text) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
 
+const getAssetUrl = (path) => {
+  if (!path) return path;
+  if (/^https?:\/\//.test(path)) return path;
+
+  const basePath = import.meta.env.BASE_URL ?? '/';
+  const normalizedBase = basePath.endsWith('/') ? basePath : `${basePath}/`;
+  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
+
+  return `${normalizedBase}${normalizedPath}`;
+};
+
 const getSongPreviewUrl = (song) => {
-  if (song.previewUrl) return song.previewUrl;
+  if (song.previewUrl) return getAssetUrl(song.previewUrl);
   const folder = song.albumFolder ? song.albumFolder : slugify(song.album);
-  return `/songs/Album/${folder}/${slugify(song.title)}.mp3`;
+  return getAssetUrl(`/songs/Album/${folder}/${slugify(song.title)}.mp3`);
 };
 
 function App() {
@@ -400,6 +411,10 @@ function App() {
           </div>
         )}
       </div>
+
+      <footer className="mx-auto mt-8 max-w-3xl text-center text-sm text-slate-400">
+        <p>Developed by <a href='https://github.com/Kratomchvil' className="text-cyan-400 hover:text-cyan-300" target="_blank" rel="noopener noreferrer">Daniel Kratochvíl</a> • SaulGuesser © {new Date().getFullYear()}</p>
+      </footer>
     </div>
   );
 }
