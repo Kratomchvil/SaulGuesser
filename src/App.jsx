@@ -56,6 +56,8 @@ const songs = [
   { id: 53, title: 'Stále ale môžeme ožiť', album: 'S.A.M.O', previewUrl: '/songs/Album/SAMO/Stale-ale-mozeme-ozit.mp3' },
   { id: 54, title: 'Tiché vody', album: 'S.A.M.O', previewUrl: '/songs/Album/SAMO/Tiche-vody.mp3' },
   { id: 55, title: 'Trpezlivosť', album: 'S.A.M.O', previewUrl: '/songs/Album/SAMO/Trpenzlivost.mp3' },
+  { id: 56, title: 'Včera mi zhorel dom', album: 'Agónia & Extáza', previewUrl: '/songs/Album/Agonia-Extaza/Vcera-mi-zhorel-dom.mp3' },
+  { id: 57, title: 'Motýľ', album: 'Agónia & Extáza', previewUrl: '/songs/Album/Agonia-Extaza/Motyl.mp3' },
 ];
 
 const slugify = (text) =>
@@ -168,15 +170,12 @@ function App() {
   const handleTimeout = () => {
     setFeedback({
       type: 'error',
-      message: 'Nestihl si časový limit. Spúšťam ďalšie kolo.',
+      message: `Čas vypršel! Správná odpověď byla “${currentSong.title}”.`,
     });
     setScore((prev) => ({
       correct: prev.correct,
       total: prev.total + 1,
     }));
-    timeoutRef.current = setTimeout(() => {
-      startNewRound();
-    }, 1200);
   };
 
   const startCountdown = () => {
@@ -255,8 +254,8 @@ function App() {
     setFeedback({
       type: isCorrect ? 'success' : 'error',
       message: isCorrect
-        ? 'Správná odpověď!'
-        : `Není to ono. Správná odpověď byla “${currentSong.title}”.`,
+        ? `Správná odpověď! Song: ${currentSong.title} | Album: ${currentSong.album}.`
+        : `Špatná odpověď. Správná odpověď byla “${currentSong.title}”.`,
     });
   };
 
@@ -266,35 +265,39 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-transparent px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(217,70,239,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(34,211,238,0.16),_transparent_25%),linear-gradient(135deg,_#020617_0%,_#0f172a_45%,_#111827_100%)] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
       <audio ref={audioRef} preload="auto" />
 
-      <div className="mx-auto mb-8 max-w-3xl text-center">
-        <p className="text-s uppercase tracking-[0.4em] text-fuchsia-400/90">Jsi pravý fanoušek Saula? Ověř si to přes:</p>
-        <h1 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-8xl">SaulGuesser</h1>
-        <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
-          Spusť hru tak, že zmáčkneš tlačítko "Přehrát ukázku". Máš přesně 10 sekund na uhodnutí skladby! Když uhodneš (popřípadě neuhodneš), pokračuj dále tlačítkem "Nové kolo".
+      <div className="mx-auto mb-10 max-w-3xl text-center">
+        <div className="mb-4 inline-flex items-center rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-fuchsia-200 shadow-[0_0_30px_rgba(217,70,239,0.2)]">
+          Jsi pravý fanoušek Saula? Ověř si to přes:
+        </div>
+        <h1 className="mt-1 bg-gradient-to-r from-white via-fuchsia-200 to-cyan-200 bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-8xl">
+          SaulGuesser
+        </h1>
+        <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+          Spusť hru tak, že zmáčkneš tlačítko „Přehrát ukázku“. Máš přesně 10 sekund na uhodnutí skladby! Když uhodneš nebo neuhodneš, pokračuj dále tlačítkem „Nové kolo“.
         </p>
       </div>
 
-      <div className="mx-auto flex max-w-3xl flex-col rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-[0_0_60px_rgba(88,28,135,0.25)] backdrop-blur-sm sm:p-8 lg:p-10">
-        <div className="mb-6 grid w-full gap-4 rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-4 text-sm text-slate-300 sm:grid-cols-[1fr_auto_1fr]">
-          <div className="rounded-3xl border border-fuchsia-500/10 bg-white/5 px-4 py-4 shadow-[0_15px_30px_rgba(15,23,42,0.2)]">
-            <p className="text-xs uppercase tracking-[0.32em] text-fuchsia-300">Skóre</p>
+      <div className="mx-auto flex max-w-3xl flex-col rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_0_80px_rgba(168,85,247,0.22)] backdrop-blur-xl sm:p-8 lg:p-10">
+        <div className="mb-6 grid w-full gap-4 rounded-[1.5rem] border border-white/10 bg-slate-900/80 px-4 py-4 text-sm text-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:grid-cols-[1fr_auto_1fr]">
+          <div className="rounded-[1.25rem] border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-500/15 to-transparent px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.25)]">
+            <p className="text-[0.7rem] uppercase tracking-[0.35em] text-fuchsia-300">Skóre</p>
             <p className="mt-2 text-2xl font-semibold text-white">{score.correct} / {maxRounds}</p>
           </div>
-          <div className="mx-auto flex h-24 w-24 flex-col items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-600 to-cyan-500 text-white shadow-lg shadow-cyan-500/20">
+          <div className="mx-auto flex h-24 w-24 flex-col items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-600 via-violet-500 to-cyan-500 text-white shadow-[0_0_35px_rgba(34,211,238,0.25)]">
             <span className="text-[0.65rem] uppercase tracking-[0.25em] text-white/80">Čas</span>
             <span className="mt-1 text-2xl font-semibold">{timeLeft}s</span>
           </div>
-          <div className="rounded-3xl border border-cyan-500/10 bg-white/5 px-4 py-4 text-right shadow-[0_15px_30px_rgba(15,23,42,0.2)]">
-            <p className="text-xs uppercase tracking-[0.32em] text-cyan-300">Kolo</p>
+          <div className="rounded-[1.25rem] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/15 to-transparent px-4 py-4 text-right shadow-[0_12px_30px_rgba(15,23,42,0.25)]">
+            <p className="text-[0.7rem] uppercase tracking-[0.35em] text-cyan-300">Kolo</p>
             <p className="mt-2 text-2xl font-semibold text-white">{round} / {maxRounds}</p>
           </div>
         </div>
 
         {isFinished && (
-          <div className="mb-6 rounded-3xl border border-emerald-500/20 bg-slate-950/90 px-6 py-6 text-center text-sm text-emerald-200 shadow-[0_0_40px_rgba(16,185,129,0.18)]">
+          <div className="mb-6 rounded-[1.5rem] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-slate-950/90 px-6 py-6 text-center text-sm text-emerald-200 shadow-[0_0_40px_rgba(16,185,129,0.18)]">
             <p className="text-base uppercase tracking-[0.35em] text-emerald-300">Konec hry!</p>
             <h2 className="mt-3 text-2xl font-semibold text-white">Tvoje výsledky</h2>
             <p className="mt-3 text-slate-300">Správné odpovědi: <span className="font-semibold text-white">{score.correct} / {maxRounds}</span></p>
@@ -305,14 +308,14 @@ function App() {
         <button
           onClick={playPreview}
           disabled={isFinished}
-          className={`mb-6 flex items-center justify-center rounded-full px-6 py-3 text-lg font-semibold text-white shadow-lg shadow-fuchsia-900/40 transition ${isFinished ? 'cursor-not-allowed bg-slate-700/70' : 'bg-gradient-to-r from-fuchsia-600 to-cyan-500 hover:scale-[1.02]'}`}
+          className={`mb-6 flex items-center justify-center rounded-full px-6 py-3 text-lg font-semibold text-white shadow-[0_0_35px_rgba(217,70,239,0.3)] transition ${isFinished ? 'cursor-not-allowed bg-slate-700/70' : 'bg-gradient-to-r from-fuchsia-600 via-violet-500 to-cyan-500 hover:scale-[1.02] hover:shadow-[0_0_45px_rgba(34,211,238,0.28)]'}`}
         >
           <span className="mr-2 text-xl">▶</span>
-          {isPlayingPreview ? 'Prehrávam...' : 'Přehrát ukázku'}
+          {isPlayingPreview ? 'Přehrávám...' : 'Přehrát ukázku'}
         </button>
 
         <div className="w-full">
-          <label className="mb-2 block text-sm text-slate-300" htmlFor="guess">
+          <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="guess">
             Tvoj tip
           </label>
           <div className="relative">
@@ -338,11 +341,11 @@ function App() {
               onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
               placeholder="Napr. Niekde v oblakoch"
               disabled={isFinished}
-              className={`w-full rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-base outline-none ring-0 transition focus:border-fuchsia-500 ${isFinished ? 'cursor-not-allowed opacity-70' : ''}`}
+              className={`w-full rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-base outline-none ring-0 transition placeholder:text-slate-500 focus:border-fuchsia-500 focus:bg-slate-900 ${isFinished ? 'cursor-not-allowed opacity-70' : ''}`}
             />
 
             {showSuggestions && suggestions.length > 0 && (
-              <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-xl">
+              <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-[0_15px_35px_rgba(0,0,0,0.35)]">
                 {suggestions.map((song) => (
                   <li key={song.id}>
                     <button
@@ -365,14 +368,14 @@ function App() {
           <button
             onClick={handleGuess}
             disabled={isFinished || !guess.trim()}
-            className={`flex-1 rounded-2xl px-4 py-3 font-semibold transition ${isFinished || !guess.trim() ? 'bg-white/10 text-slate-400 cursor-not-allowed' : 'bg-white/10 hover:bg-white/20'}`}
+            className={`flex-1 rounded-2xl px-4 py-3 font-semibold transition ${isFinished || !guess.trim() ? 'cursor-not-allowed bg-white/10 text-slate-400' : 'bg-white/10 text-white hover:bg-white/20'}`}
           >
             <span className="text-xl">✓</span>
           </button>
           <button
             onClick={startNewRound}
             disabled={isFinished}
-            className={`rounded-2xl px-4 py-3 font-semibold transition ${isFinished ? 'border border-slate-600 bg-slate-700/80 text-slate-400 cursor-not-allowed' : 'border border-fuchsia-500/40 text-fuchsia-300 hover:bg-fuchsia-500/10'}`}
+            className={`rounded-2xl px-4 py-3 font-semibold transition ${isFinished ? 'cursor-not-allowed border border-slate-600 bg-slate-700/80 text-slate-400' : 'border border-fuchsia-500/40 text-fuchsia-200 hover:bg-fuchsia-500/10'}`}
           >
             Nové kolo
           </button>
