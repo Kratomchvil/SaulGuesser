@@ -68,6 +68,38 @@ const slugify = (text) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
 
+const LEADERBOARD_STORAGE_KEY = 'saulguesser_leaderboard';
+const LEADERBOARD_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+const purgeOldEntries = (entries) => {
+  const now = Date.now();
+  return entries.filter((entry) => {
+    const entryTime = new Date(entry.timestamp).getTime();
+    return Number.isFinite(entryTime) && now - entryTime <= LEADERBOARD_RETENTION_MS;
+  });
+};
+
+const loadLeaderboard = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = window.localStorage.getItem(LEADERBOARD_STORAGE_KEY);
+    const entries = stored ? JSON.parse(stored) : [];
+    const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
+    if (filtered.length !== (entries?.length ?? 0)) {
+      window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(filtered));
+    }
+    return filtered;
+  } catch {
+    return [];
+  }
+};
+
+const saveLeaderboard = (entries) => {
+  if (typeof window === 'undefined') return;
+  const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
+  window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(filtered));
+};
+
 const getAssetUrl = (path) => {
   if (!path) return path;
   if (/^https?:\/\//.test(path)) return path;
@@ -93,6 +125,12 @@ function App() {
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [timeLeft, setTimeLeft] = useState(10);
+  const [currentView, setCurrentView] = useState('game');
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [playerName, setPlayerName] = useState('');
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [gameTimes, setGameTimes] = useState([]);
+  const [submitMessage, setSubmitMessage] = useState('');
   const audioRef = useRef(null);
   const previewTimerRef = useRef(null);
   const countdownRef = useRef(null);
@@ -116,6 +154,10 @@ function App() {
     setIsPlayingPreview(false);
     setCurrentSong(pickRandomSong());
     setTimeLeft(10);
+    setGameTimes([]);
+    setPlayerName('');
+    setIsRegistered(false);
+    setSubmitMessage('');
   };
 
   const startNewRound = () => {
@@ -135,6 +177,7 @@ function App() {
   };
 
   useEffect(() => {
+    setLeaderboard(loadLeaderboard());
     startNewRound();
   }, []);
 
@@ -154,6 +197,34 @@ function App() {
       .filter((song) => song.title.toLowerCase().includes(guess.trim().toLowerCase()))
       .slice(0, 4);
   }, [guess]);
+
+  const averageTime = useMemo(() => {
+    if (!gameTimes.length) return null;
+    return gameTimes.reduce((sum, value) => sum + value, 0) / gameTimes.length;
+  }, [gameTimes]);
+
+  const sortedLeaderboard = useMemo(() => {
+    return [...leaderboard].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.avgSeconds - b.avgSeconds;
+    });
+  }, [leaderboard]);
+
+  const addLeaderboardEntry = (name, scoreValue, avgSeconds) => {
+    const nextEntries = [...leaderboard, {
+      id: `${Date.now()}-${name}`,
+      name: name.trim(),
+      score: scoreValue,
+      avgSeconds: avgSeconds ?? 0,
+      timestamp: new Date().toISOString(),
+    }];
+    const sorted = nextEntries.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.avgSeconds - b.avgSeconds;
+    });
+    setLeaderboard(sorted);
+    saveLeaderboard(sorted);
+  };
 
   const stopPreview = () => {
     if (audioRef.current) {
@@ -253,9 +324,14 @@ function App() {
 
     stopCountdown();
 
+    const timeUsed = Math.max(0, 10 - timeLeft);
     const normalizedGuess = guess.trim().toLowerCase();
     const normalizedTitle = currentSong.title.toLowerCase();
     const isCorrect = normalizedGuess === normalizedTitle;
+
+    if (isCorrect) {
+      setGameTimes((prev) => [...prev, timeUsed]);
+    }
 
     setScore((prev) => ({
       correct: prev.correct + (isCorrect ? 1 : 0),
@@ -275,6 +351,19 @@ function App() {
     setShowSuggestions(false);
   };
 
+  const handleLeaderboardSubmit = (event) => {
+    event.preventDefault();
+    const trimmedName = playerName.trim();
+    if (!trimmedName) {
+      setSubmitMessage('Zadej prosím jméno.');
+      return;
+    }
+
+    addLeaderboardEntry(trimmedName, score.correct, averageTime ?? 0);
+    setIsRegistered(true);
+    setSubmitMessage('Článek byl uložen do leaderboardu.');
+  };
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(217,70,239,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(34,211,238,0.16),_transparent_25%),linear-gradient(135deg,_#020617_0%,_#0f172a_45%,_#111827_100%)] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
       <audio ref={audioRef} preload="auto" />
@@ -286,12 +375,57 @@ function App() {
         <h1 className="mt-1 bg-gradient-to-r from-white via-fuchsia-200 to-cyan-200 bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-8xl">
           SaulGuesser
         </h1>
+        <div className="mt-6 flex flex-col items-center justify-center gap-3 text-sm sm:flex-row">
+          <button
+            type="button"
+            onClick={() => setCurrentView('game')}
+            className={`rounded-full px-5 py-3 font-semibold transition ${currentView === 'game' ? 'bg-fuchsia-500 text-white' : 'bg-white/10 text-slate-200 hover:bg-white/20'}`}
+          >
+            Hra
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentView('leaderboard')}
+            className={`rounded-full px-5 py-3 font-semibold transition ${currentView === 'leaderboard' ? 'bg-cyan-500 text-white' : 'bg-white/10 text-slate-200 hover:bg-white/20'}`}
+          >
+            Leaderboard
+          </button>
+        </div>
         <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-          Spusť hru tak, že zmáčkneš tlačítko „Přehrát ukázku“. Máš přesně 10 sekund na uhodnutí skladby! Když uhodneš nebo neuhodneš, pokračuj dále tlačítkem „Nové kolo“.
+          Spusť hru tak, že zmáčkneš tlačítko „Přehrát ukázku“. Máš přesně 10 sekund na uhodnutí skladby! Když uhodneš nebo neuhodneš, pokračuj dále tlačítkem „Nové kolo".
         </p>
       </div>
 
-      <div className="mx-auto flex max-w-3xl flex-col rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_0_80px_rgba(168,85,247,0.22)] backdrop-blur-xl sm:p-8 lg:p-10">
+      {currentView === 'leaderboard' ? (
+        <div className="mx-auto max-w-3xl rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_0_80px_rgba(168,85,247,0.22)] backdrop-blur-xl sm:p-8 lg:p-10">
+          <h2 className="mb-6 text-3xl font-semibold text-white">Leaderboard</h2>
+          {sortedLeaderboard.length === 0 ? (
+            <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 text-slate-300">
+              Zatím není žádný výsledek. Zahraj hru a přidej se na leaderboard!
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80">
+              <div className="grid grid-cols-[3rem_1fr_3rem_3rem_4rem] gap-4 border-b border-white/10 px-4 py-4 text-xs uppercase tracking-[0.2em] text-slate-400">
+                <span>#</span>
+                <span>Hráč</span>
+                <span>Skóre</span>
+                <span>Průměr</span>
+                <span>Datum</span>
+              </div>
+              {sortedLeaderboard.map((entry, index) => (
+                <div key={entry.id} className="grid grid-cols-[3rem_1fr_3rem_3rem_4rem] gap-4 border-t border-white/10 px-4 py-4 text-sm text-slate-200">
+                  <span className="text-slate-400">{index + 1}</span>
+                  <span>{entry.name}</span>
+                  <span>{entry.score}</span>
+                  <span>{entry.avgSeconds.toFixed(2)}s</span>
+                  <span className="text-slate-400">{new Date(entry.timestamp).toLocaleDateString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mx-auto flex max-w-3xl flex-col rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_0_80px_rgba(168,85,247,0.22)] backdrop-blur-xl sm:p-8 lg:p-10">
         <div className="mb-6 grid w-full gap-4 rounded-[1.5rem] border border-white/10 bg-slate-900/80 px-4 py-4 text-sm text-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:grid-cols-[1fr_auto_1fr]">
           <div className="rounded-[1.25rem] border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-500/15 to-transparent px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.25)]">
             <p className="text-[0.7rem] uppercase tracking-[0.35em] text-fuchsia-300">Skóre</p>
@@ -312,7 +446,40 @@ function App() {
             <p className="text-base uppercase tracking-[0.35em] text-emerald-300">Konec hry!</p>
             <h2 className="mt-3 text-2xl font-semibold text-white">Tvoje výsledky</h2>
             <p className="mt-3 text-slate-300">Správné odpovědi: <span className="font-semibold text-white">{score.correct} / {maxRounds}</span></p>
-            <p className="mt-1 text-slate-400">Zmáčkni „Restart hry“ pro novou hru.</p>
+            <p className="mt-1 text-slate-400">Průměrná doba uhodnutí správných tipů: <span className="font-semibold text-white">{averageTime ? `${averageTime.toFixed(2)} s` : 'N/A'}</span></p>
+            <p className="mt-1 text-slate-400">Zmáčkni „Restart hry“ pro novou hru nebo se zapiš na leaderboard níže.</p>
+          </div>
+        )}
+
+        {isFinished && (
+          <div className="mb-6 rounded-[1.5rem] border border-slate-700/50 bg-slate-900/80 px-6 py-6 text-sm text-slate-200 shadow-[0_0_30px_rgba(0,0,0,0.3)]">
+            <h3 className="mb-4 text-lg font-semibold text-white">Zapsat se do leaderboardu</h3>
+            <form onSubmit={handleLeaderboardSubmit} className="grid gap-4 sm:grid-cols-[1fr_auto]">
+              <label className="sr-only" htmlFor="playerName">Jméno</label>
+              <input
+                id="playerName"
+                value={playerName}
+                onChange={(event) => setPlayerName(event.target.value)}
+                placeholder="Zadej své jméno"
+                className="w-full rounded-2xl border border-white/10 bg-slate-950/90 px-4 py-3 text-base text-slate-100 outline-none focus:border-cyan-500"
+              />
+              <button
+                type="submit"
+                className="rounded-2xl bg-cyan-500 px-6 py-3 font-semibold text-white transition hover:bg-cyan-400"
+              >
+                {isRegistered ? 'Uloženo' : 'Uložit výsledky'}
+              </button>
+            </form>
+            {submitMessage && (
+              <p className="mt-3 text-sm text-slate-300">{submitMessage}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setCurrentView('leaderboard')}
+              className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Zobrazit leaderboard
+            </button>
           </div>
         )}
 
@@ -411,6 +578,7 @@ function App() {
           </div>
         )}
       </div>
+      )}
 
       <footer className="mx-auto mt-8 max-w-3xl text-center text-sm text-slate-400">
         <p>Developed by <a href='https://github.com/Kratomchvil' className="text-cyan-400 hover:text-cyan-300" target="_blank" rel="noopener noreferrer">Daniel Kratochvíl</a> • SaulGuesser © {new Date().getFullYear()}</p>
