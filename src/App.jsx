@@ -70,6 +70,7 @@ const slugify = (text) =>
 
 const LEADERBOARD_STORAGE_KEY = 'saulguesser_leaderboard';
 const LEADERBOARD_RETENTION_MS = 24 * 60 * 60 * 1000;
+const REMOTE_LEADERBOARD_URL = import.meta.env.VITE_LEADERBOARD_URL || '';
 
 const purgeOldEntries = (entries) => {
   const now = Date.now();
@@ -79,25 +80,53 @@ const purgeOldEntries = (entries) => {
   });
 };
 
-const loadLeaderboard = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const stored = window.localStorage.getItem(LEADERBOARD_STORAGE_KEY);
-    const entries = stored ? JSON.parse(stored) : [];
-    const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
-    if (filtered.length !== (entries?.length ?? 0)) {
-      window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(filtered));
+const loadLeaderboard = async () => {
+  const loadLocal = () => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = window.localStorage.getItem(LEADERBOARD_STORAGE_KEY);
+      const entries = stored ? JSON.parse(stored) : [];
+      const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
+      if (filtered.length !== (entries?.length ?? 0)) {
+        window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(filtered));
+      }
+      return filtered;
+    } catch {
+      return [];
     }
+  };
+
+  if (!REMOTE_LEADERBOARD_URL) return loadLocal();
+
+  try {
+    const response = await fetch(REMOTE_LEADERBOARD_URL);
+    if (!response.ok) throw new Error('Remote leaderboard fetch failed');
+    const entries = await response.json();
+    const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
+    saveLeaderboard(filtered);
     return filtered;
   } catch {
-    return [];
+    return loadLocal();
   }
 };
 
-const saveLeaderboard = (entries) => {
+const saveLeaderboard = async (entries) => {
   if (typeof window === 'undefined') return;
   const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
   window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(filtered));
+
+  if (!REMOTE_LEADERBOARD_URL) return false;
+
+  try {
+    await fetch(REMOTE_LEADERBOARD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(filtered),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const getAssetUrl = (path) => {
