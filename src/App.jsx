@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { supabase, supabaseConfigError, supabaseConfigured } from './lib/supabase.js';
 
 const songs = [
   { id: 1, title: 'Bliss', album: 'Niekde v oblakoch', previewUrl: '/songs/Album/Niekde-v-oblakoch/Bliss.mp3' },
@@ -70,7 +71,8 @@ const slugify = (text) =>
 
 const LEADERBOARD_STORAGE_KEY = 'saulguesser_leaderboard';
 const LEADERBOARD_RETENTION_MS = 24 * 60 * 60 * 1000;
-const REMOTE_LEADERBOARD_URL = import.meta.env.VITE_LEADERBOARD_URL || '';
+const LEADERBOARD_TABLE = 'leaderboard_entries';
+const LEADERBOARD_LIMIT = 100;
 
 const purgeOldEntries = (entries) => {
   const now = Date.now();
@@ -80,53 +82,70 @@ const purgeOldEntries = (entries) => {
   });
 };
 
-const loadLeaderboard = async () => {
-  const loadLocal = () => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const stored = window.localStorage.getItem(LEADERBOARD_STORAGE_KEY);
-      const entries = stored ? JSON.parse(stored) : [];
-      const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
-      if (filtered.length !== (entries?.length ?? 0)) {
-        window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(filtered));
-      }
-      return filtered;
-    } catch {
-      return [];
-    }
-  };
-
-  if (!REMOTE_LEADERBOARD_URL) return loadLocal();
-
+const loadLocalLeaderboard = () => {
+  if (typeof window === 'undefined') return [];
   try {
-    const response = await fetch(REMOTE_LEADERBOARD_URL);
-    if (!response.ok) throw new Error('Remote leaderboard fetch failed');
-    const entries = await response.json();
-    const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
-    saveLeaderboard(filtered);
+    const stored = window.localStorage.getItem(LEADERBOARD_STORAGE_KEY);
+    const entries = stored ? JSON.parse(stored) : [];
+    if (!Array.isArray(entries)) throw new Error('Lokální leaderboard má neplatný formát.');
+    const filtered = purgeOldEntries(entries);
+    if (filtered.length !== entries.length) {
+      window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(filtered));
+    }
     return filtered;
-  } catch {
-    return loadLocal();
+  } catch (error) {
+    throw new Error('Nepodařilo se načíst leaderboard z tohoto prohlížeče.', { cause: error });
   }
 };
 
-const saveLeaderboard = async (entries) => {
-  if (typeof window === 'undefined') return;
-  const filtered = purgeOldEntries(Array.isArray(entries) ? entries : []);
-  window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(filtered));
+const mapLeaderboardRow = ({ id, name, score, avg_seconds, created_at }) => ({
+  id,
+  name,
+  score,
+  avgSeconds: Number(avg_seconds),
+  timestamp: created_at,
+});
 
-  if (!REMOTE_LEADERBOARD_URL) return false;
+const loadLeaderboard = async () => {
+  if (supabaseConfigError) throw new Error(supabaseConfigError);
+  if (!supabase) return loadLocalLeaderboard();
 
-  try {
-    await fetch(REMOTE_LEADERBOARD_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(filtered),
-    });
-    return true;
-  } catch {
-    return false;
+  const { data, error } = await supabase
+    .from(LEADERBOARD_TABLE)
+    .select('id, name, score, avg_seconds, created_at')
+    .gte('created_at', new Date(Date.now() - LEADERBOARD_RETENTION_MS).toISOString())
+    .order('score', { ascending: false })
+    .order('avg_seconds', { ascending: true })
+    .limit(LEADERBOARD_LIMIT);
+
+  if (error) throw error;
+  return data.map(mapLeaderboardRow);
+};
+
+const saveLeaderboardEntry = async ({ name, score, avgSeconds }) => {
+  if (supabaseConfigError) throw new Error(supabaseConfigError);
+  if (!supabase) {
+    const timestamp = new Date().toISOString();
+    const entry = {
+      id: `${Date.now()}-${name}`,
+      name,
+      score,
+      avgSeconds,
+      timestamp,
+    };
+    const entries = purgeOldEntries([...loadLocalLeaderboard(), entry]);
+    window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(entries));
+    return entry;
   }
+
+  const { data, error } = await supabase
+    .from(LEADERBOARD_TABLE)
+    .insert({ name, score, avg_seconds: avgSeconds })
+    .select('id, name, score, avg_seconds, created_at')
+    .single();
+
+  if (error) throw error;
+  return mapLeaderboardRow(data);
 };
 
 const getAssetUrl = (path) => {
@@ -156,8 +175,11 @@ function App() {
   const [timeLeft, setTimeLeft] = useState(10);
   const [currentView, setCurrentView] = useState('game');
   const [leaderboard, setLeaderboard] = useState([]);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(true);
+  const [leaderboardError, setLeaderboardError] = useState('');
   const [playerName, setPlayerName] = useState('');
   const [isRegistered, setIsRegistered] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [gameTimes, setGameTimes] = useState([]);
   const [submitMessage, setSubmitMessage] = useState('');
   const audioRef = useRef(null);
@@ -206,8 +228,25 @@ function App() {
   };
 
   useEffect(() => {
-    setLeaderboard(loadLeaderboard());
+    let isActive = true;
+    setIsLeaderboardLoading(true);
+    loadLeaderboard()
+      .then((entries) => {
+        if (isActive) setLeaderboard(entries);
+      })
+      .catch((error) => {
+        console.error('Failed to load leaderboard', error);
+        if (isActive) {
+          setLeaderboardError(error.message || 'Nepodařilo se načíst leaderboard.');
+        }
+      })
+      .finally(() => {
+        if (isActive) setIsLeaderboardLoading(false);
+      });
     startNewRound();
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -239,20 +278,17 @@ function App() {
     });
   }, [leaderboard]);
 
-  const addLeaderboardEntry = (name, scoreValue, avgSeconds) => {
-    const nextEntries = [...leaderboard, {
-      id: `${Date.now()}-${name}`,
-      name: name.trim(),
-      score: scoreValue,
-      avgSeconds: avgSeconds ?? 0,
-      timestamp: new Date().toISOString(),
-    }];
-    const sorted = nextEntries.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.avgSeconds - b.avgSeconds;
-    });
-    setLeaderboard(sorted);
-    saveLeaderboard(sorted);
+  const refreshLeaderboard = async () => {
+    setIsLeaderboardLoading(true);
+    setLeaderboardError('');
+    try {
+      setLeaderboard(await loadLeaderboard());
+    } catch (error) {
+      console.error('Failed to load leaderboard', error);
+      setLeaderboardError(error.message || 'Nepodařilo se načíst leaderboard.');
+    } finally {
+      setIsLeaderboardLoading(false);
+    }
   };
 
   const stopPreview = () => {
@@ -380,17 +416,37 @@ function App() {
     setShowSuggestions(false);
   };
 
-  const handleLeaderboardSubmit = (event) => {
+  const handleLeaderboardSubmit = async (event) => {
     event.preventDefault();
     const trimmedName = playerName.trim();
     if (!trimmedName) {
       setSubmitMessage('Zadej prosím jméno.');
       return;
     }
+    if (trimmedName.length > 40) {
+      setSubmitMessage('Jméno může mít nejvýše 40 znaků.');
+      return;
+    }
 
-    addLeaderboardEntry(trimmedName, score.correct, averageTime ?? 0);
-    setIsRegistered(true);
-    setSubmitMessage('Článek byl uložen do leaderboardu.');
+    setIsSubmitting(true);
+    setSubmitMessage('');
+    try {
+      const entry = await saveLeaderboardEntry({
+        name: trimmedName,
+        score: score.correct,
+        avgSeconds: averageTime ?? 0,
+      });
+      setLeaderboard((entries) => [...entries, entry]);
+      setIsRegistered(true);
+      setSubmitMessage(supabaseConfigured
+        ? 'Výsledek byl uložen do Supabase.'
+        : 'Výsledek je uložen pouze v tomto prohlížeči. Pro sdílený leaderboard nastav Supabase.');
+    } catch (error) {
+      console.error('Failed to save leaderboard entry', error);
+      setSubmitMessage(`Výsledek se nepodařilo uložit: ${error.message || 'neznámá chyba'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -428,11 +484,35 @@ function App() {
       {currentView === 'leaderboard' ? (
         <div className="mx-auto max-w-3xl rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_0_80px_rgba(168,85,247,0.22)] backdrop-blur-xl sm:p-8 lg:p-10">
           <h2 className="mb-6 text-3xl font-semibold text-white">Leaderboard</h2>
-          {sortedLeaderboard.length === 0 ? (
+          {!supabaseConfigured && (
+            <p className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+              {supabaseConfigError
+                ? `${supabaseConfigError} Výsledky se ukládají jen v tomto prohlížeči.`
+                : 'Supabase není nastavený. Výsledky se ukládají jen v tomto prohlížeči.'}
+            </p>
+          )}
+          {leaderboardError && (
+            <div role="alert" className="mb-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">
+              <p>Nepodařilo se načíst leaderboard: {leaderboardError}</p>
+              <button
+                type="button"
+                onClick={refreshLeaderboard}
+                disabled={isLeaderboardLoading}
+                className="mt-3 rounded-xl bg-white/10 px-4 py-2 font-semibold hover:bg-white/20 disabled:opacity-50"
+              >
+                Zkusit znovu
+              </button>
+            </div>
+          )}
+          {isLeaderboardLoading ? (
+            <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 text-slate-300">
+              Načítám leaderboard…
+            </div>
+          ) : sortedLeaderboard.length === 0 && !leaderboardError ? (
             <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 text-slate-300">
               Zatím není žádný výsledek. Zahraj hru a přidej se na leaderboard!
             </div>
-          ) : (
+          ) : sortedLeaderboard.length > 0 ? (
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80">
               <div className="grid grid-cols-[3rem_1fr_3rem_3rem_4rem] gap-4 border-b border-white/10 px-4 py-4 text-xs uppercase tracking-[0.2em] text-slate-400">
                 <span>#</span>
@@ -451,7 +531,7 @@ function App() {
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
       ) : (
         <div className="mx-auto flex max-w-3xl flex-col rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_0_80px_rgba(168,85,247,0.22)] backdrop-blur-xl sm:p-8 lg:p-10">
@@ -489,14 +569,16 @@ function App() {
                 id="playerName"
                 value={playerName}
                 onChange={(event) => setPlayerName(event.target.value)}
+                maxLength={40}
                 placeholder="Zadej své jméno"
                 className="w-full rounded-2xl border border-white/10 bg-slate-950/90 px-4 py-3 text-base text-slate-100 outline-none focus:border-cyan-500"
               />
               <button
                 type="submit"
+                disabled={isRegistered || isSubmitting}
                 className="rounded-2xl bg-cyan-500 px-6 py-3 font-semibold text-white transition hover:bg-cyan-400"
               >
-                {isRegistered ? 'Uloženo' : 'Uložit výsledky'}
+                {isSubmitting ? 'Ukládám…' : isRegistered ? 'Uloženo' : 'Uložit výsledky'}
               </button>
             </form>
             {submitMessage && (
