@@ -166,6 +166,8 @@ const getSongPreviewUrl = (song) => {
 };
 
 function App() {
+  const [hasEntered, setHasEntered] = useState(false);
+  const [isEntering, setIsEntering] = useState(false);
   const [currentSong, setCurrentSong] = useState(null);
   const [guess, setGuess] = useState('');
   const [feedback, setFeedback] = useState(null);
@@ -209,6 +211,12 @@ function App() {
     setPlayerName('');
     setIsRegistered(false);
     setSubmitMessage('');
+  };
+
+  const enterGame = () => {
+    setIsEntering(true);
+    const transitionDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 520;
+    window.setTimeout(() => setHasEntered(true), transitionDuration);
   };
 
   const startNewRound = () => {
@@ -449,72 +457,99 @@ function App() {
     }
   };
 
+  if (!hasEntered) {
+    return (
+      <main className={`sg-app sg-splash ${isEntering ? 'is-exiting' : ''}`}>
+        <div className="sg-splash-atmosphere" aria-hidden="true">
+          <span className="sg-splash-image sg-splash-image-one" />
+          <span className="sg-splash-image sg-splash-image-two" />
+          <span className="sg-splash-image sg-splash-image-three" />
+        </div>
+        <div className="sg-splash-content">
+          <h1 className="sg-title">SaulGuesser</h1>
+          <button
+            type="button"
+            className="sg-start-button"
+            onClick={enterGame}
+            disabled={isEntering}
+          >
+            Začít hrát
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(217,70,239,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(34,211,238,0.16),_transparent_25%),linear-gradient(135deg,_#020617_0%,_#0f172a_45%,_#111827_100%)] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
+    <div className="sg-app sg-main">
       <audio ref={audioRef} preload="auto" />
 
-      <div className="mx-auto mb-10 max-w-3xl text-center">
-        <div className="mb-4 inline-flex items-center rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-fuchsia-200 shadow-[0_0_30px_rgba(217,70,239,0.2)]">
+      <div className="sg-header">
+        <div className="sg-kicker">
           Jsi pravý fanoušek Saula? Ověř si to přes:
         </div>
-        <h1 className="mt-1 bg-gradient-to-r from-white via-fuchsia-200 to-cyan-200 bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-8xl">
-          SaulGuesser
-        </h1>
-        <div className="mt-6 flex flex-col items-center justify-center gap-3 text-sm sm:flex-row">
+        <h1 className="sg-title">SaulGuesser</h1>
+        <div className="sg-tabs">
           <button
             type="button"
             onClick={() => setCurrentView('game')}
-            className={`rounded-full px-5 py-3 font-semibold transition ${currentView === 'game' ? 'bg-fuchsia-500 text-white' : 'bg-white/10 text-slate-200 hover:bg-white/20'}`}
+            className={`sg-tab ${currentView === 'game' ? 'is-active' : ''}`}
           >
             Hra
           </button>
           <button
             type="button"
             onClick={() => setCurrentView('leaderboard')}
-            className={`rounded-full px-5 py-3 font-semibold transition ${currentView === 'leaderboard' ? 'bg-cyan-500 text-white' : 'bg-white/10 text-slate-200 hover:bg-white/20'}`}
+            className={`sg-tab ${currentView === 'leaderboard' ? 'is-active' : ''}`}
           >
             Leaderboard
           </button>
         </div>
-        <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+        <p className="sg-intro">
           Spusť hru tak, že zmáčkneš tlačítko „Přehrát ukázku“. Máš přesně 10 sekund na uhodnutí skladby! Když uhodneš nebo neuhodneš, pokračuj dále tlačítkem „Nové kolo".
         </p>
       </div>
 
       {currentView === 'leaderboard' ? (
-        <div className="mx-auto max-w-3xl rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_0_80px_rgba(168,85,247,0.22)] backdrop-blur-xl sm:p-8 lg:p-10">
-          <h2 className="mb-6 text-3xl font-semibold text-white">Leaderboard</h2>
+        <div className="sg-panel sg-leaderboard">
+          <div className="sg-section-heading">
+            <div>
+              <p className="sg-eyebrow">Hall of fame</p>
+              <h2>Leaderboard</h2>
+            </div>
+            <span className="sg-entry-count">{sortedLeaderboard.length} výsledků</span>
+          </div>
           {!supabaseConfigured && (
-            <p className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+            <p className="sg-notice">
               {supabaseConfigError
                 ? `${supabaseConfigError} Výsledky se ukládají jen v tomto prohlížeči.`
                 : 'Supabase není nastavený. Výsledky se ukládají jen v tomto prohlížeči.'}
             </p>
           )}
           {leaderboardError && (
-            <div role="alert" className="mb-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">
+            <div role="alert" className="sg-error">
               <p>Nepodařilo se načíst leaderboard: {leaderboardError}</p>
               <button
                 type="button"
                 onClick={refreshLeaderboard}
                 disabled={isLeaderboardLoading}
-                className="mt-3 rounded-xl bg-white/10 px-4 py-2 font-semibold hover:bg-white/20 disabled:opacity-50"
+                className="sg-button sg-button-secondary"
               >
                 Zkusit znovu
               </button>
             </div>
           )}
           {isLeaderboardLoading ? (
-            <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 text-slate-300">
+            <div className="sg-empty">
               Načítám leaderboard…
             </div>
           ) : sortedLeaderboard.length === 0 && !leaderboardError ? (
-            <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 text-slate-300">
+            <div className="sg-empty">
               Zatím není žádný výsledek. Zahraj hru a přidej se na leaderboard!
             </div>
           ) : sortedLeaderboard.length > 0 ? (
-            <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80">
-              <div className="grid grid-cols-[3rem_1fr_3rem_3rem_4rem] gap-4 border-b border-white/10 px-4 py-4 text-xs uppercase tracking-[0.2em] text-slate-400">
+            <div className="sg-table">
+              <div className="sg-table-row sg-table-head">
                 <span>#</span>
                 <span>Hráč</span>
                 <span>Skóre</span>
@@ -522,48 +557,48 @@ function App() {
                 <span>Datum</span>
               </div>
               {sortedLeaderboard.map((entry, index) => (
-                <div key={entry.id} className="grid grid-cols-[3rem_1fr_3rem_3rem_4rem] gap-4 border-t border-white/10 px-4 py-4 text-sm text-slate-200">
-                  <span className="text-slate-400">{index + 1}</span>
-                  <span>{entry.name}</span>
-                  <span>{entry.score}</span>
+                <div key={entry.id} className={`sg-table-row ${index < 3 ? `sg-rank-${index + 1}` : ''}`}>
+                  <span className="sg-rank">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="sg-player-name">{entry.name}</span>
+                  <span className="sg-score">{entry.score}</span>
                   <span>{entry.avgSeconds.toFixed(2)}s</span>
-                  <span className="text-slate-400">{new Date(entry.timestamp).toLocaleDateString()}</span>
+                  <span className="sg-date">{new Date(entry.timestamp).toLocaleDateString()}</span>
                 </div>
               ))}
             </div>
           ) : null}
         </div>
       ) : (
-        <div className="mx-auto flex max-w-3xl flex-col rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-[0_0_80px_rgba(168,85,247,0.22)] backdrop-blur-xl sm:p-8 lg:p-10">
-        <div className="mb-6 grid w-full gap-4 rounded-[1.5rem] border border-white/10 bg-slate-900/80 px-4 py-4 text-sm text-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:grid-cols-[1fr_auto_1fr]">
-          <div className="rounded-[1.25rem] border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-500/15 to-transparent px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.25)]">
-            <p className="text-[0.7rem] uppercase tracking-[0.35em] text-fuchsia-300">Skóre</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{score.correct} / {maxRounds}</p>
+        <div className="sg-panel sg-game">
+        <div className="sg-stats">
+          <div className="sg-stat">
+            <p className="sg-label">Skóre</p>
+            <p className="sg-stat-value">{score.correct} <span>/ {maxRounds}</span></p>
           </div>
-          <div className="mx-auto flex h-24 w-24 flex-col items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-600 via-violet-500 to-cyan-500 text-white shadow-[0_0_35px_rgba(34,211,238,0.25)]">
-            <span className="text-[0.65rem] uppercase tracking-[0.25em] text-white/80">Čas</span>
-            <span className="mt-1 text-2xl font-semibold">{timeLeft}s</span>
+          <div className="sg-timer">
+            <span className="sg-label">Čas</span>
+            <span className="sg-timer-value">{timeLeft}<small>s</small></span>
           </div>
-          <div className="rounded-[1.25rem] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/15 to-transparent px-4 py-4 text-right shadow-[0_12px_30px_rgba(15,23,42,0.25)]">
-            <p className="text-[0.7rem] uppercase tracking-[0.35em] text-cyan-300">Kolo</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{round} / {maxRounds}</p>
+          <div className="sg-stat sg-stat-right">
+            <p className="sg-label">Kolo</p>
+            <p className="sg-stat-value">{round} <span>/ {maxRounds}</span></p>
           </div>
         </div>
 
         {isFinished && (
-          <div className="mb-6 rounded-[1.5rem] border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-slate-950/90 px-6 py-6 text-center text-sm text-emerald-200 shadow-[0_0_40px_rgba(16,185,129,0.18)]">
-            <p className="text-base uppercase tracking-[0.35em] text-emerald-300">Konec hry!</p>
-            <h2 className="mt-3 text-2xl font-semibold text-white">Tvoje výsledky</h2>
-            <p className="mt-3 text-slate-300">Správné odpovědi: <span className="font-semibold text-white">{score.correct} / {maxRounds}</span></p>
-            <p className="mt-1 text-slate-400">Průměrná doba uhodnutí správných tipů: <span className="font-semibold text-white">{averageTime ? `${averageTime.toFixed(2)} s` : 'N/A'}</span></p>
-            <p className="mt-1 text-slate-400">Zmáčkni „Restart hry“ pro novou hru nebo se zapiš na leaderboard níže.</p>
+          <div className="sg-result">
+            <p className="sg-eyebrow">Konec hry!</p>
+            <h2>Tvoje výsledky</h2>
+            <p>Správné odpovědi: <strong>{score.correct} / {maxRounds}</strong></p>
+            <p>Průměrná doba uhodnutí správných tipů: <strong>{averageTime ? `${averageTime.toFixed(2)} s` : 'N/A'}</strong></p>
+            <p>Zmáčkni „Restart hry“ pro novou hru nebo se zapiš na leaderboard níže.</p>
           </div>
         )}
 
         {isFinished && (
-          <div className="mb-6 rounded-[1.5rem] border border-slate-700/50 bg-slate-900/80 px-6 py-6 text-sm text-slate-200 shadow-[0_0_30px_rgba(0,0,0,0.3)]">
-            <h3 className="mb-4 text-lg font-semibold text-white">Zapsat se do leaderboardu</h3>
-            <form onSubmit={handleLeaderboardSubmit} className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <div className="sg-register">
+            <h3>Zapsat se do leaderboardu</h3>
+            <form onSubmit={handleLeaderboardSubmit} className="sg-register-form">
               <label className="sr-only" htmlFor="playerName">Jméno</label>
               <input
                 id="playerName"
@@ -571,23 +606,23 @@ function App() {
                 onChange={(event) => setPlayerName(event.target.value)}
                 maxLength={40}
                 placeholder="Zadej své jméno"
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/90 px-4 py-3 text-base text-slate-100 outline-none focus:border-cyan-500"
+                className="sg-input"
               />
               <button
                 type="submit"
                 disabled={isRegistered || isSubmitting}
-                className="rounded-2xl bg-cyan-500 px-6 py-3 font-semibold text-white transition hover:bg-cyan-400"
+                className="sg-button sg-button-primary"
               >
                 {isSubmitting ? 'Ukládám…' : isRegistered ? 'Uloženo' : 'Uložit výsledky'}
               </button>
             </form>
             {submitMessage && (
-              <p className="mt-3 text-sm text-slate-300">{submitMessage}</p>
+              <p className="sg-submit-message">{submitMessage}</p>
             )}
             <button
               type="button"
               onClick={() => setCurrentView('leaderboard')}
-              className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+              className="sg-button sg-button-secondary sg-register-link"
             >
               Zobrazit leaderboard
             </button>
@@ -597,17 +632,17 @@ function App() {
         <button
           onClick={playPreview}
           disabled={isFinished}
-          className={`mb-6 flex items-center justify-center rounded-full px-6 py-3 text-lg font-semibold text-white shadow-[0_0_35px_rgba(217,70,239,0.3)] transition ${isFinished ? 'cursor-not-allowed bg-slate-700/70' : 'bg-gradient-to-r from-fuchsia-600 via-violet-500 to-cyan-500 hover:scale-[1.02] hover:shadow-[0_0_45px_rgba(34,211,238,0.28)]'}`}
+          className={`sg-button sg-play-button ${isFinished ? 'is-disabled' : ''}`}
         >
-          <span className="mr-2 text-xl">▶</span>
+          <span aria-hidden="true">▶</span>
           {isPlayingPreview ? 'Přehrávám...' : 'Přehrát ukázku'}
         </button>
 
-        <div className="w-full">
-          <label className="mb-2 block text-sm font-medium text-slate-300" htmlFor="guess">
+        <div className="sg-guess">
+          <label htmlFor="guess">
             Tvůj tip
           </label>
-          <div className="relative">
+          <div className="sg-input-wrap">
             <input
               id="guess"
               value={guess}
@@ -630,21 +665,21 @@ function App() {
               onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
               placeholder="Napr. Niekde v oblakoch"
               disabled={isFinished}
-              className={`w-full rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-base outline-none ring-0 transition placeholder:text-slate-500 focus:border-fuchsia-500 focus:bg-slate-900 ${isFinished ? 'cursor-not-allowed opacity-70' : ''}`}
+              className={`sg-input ${isFinished ? 'is-disabled' : ''}`}
             />
 
             {showSuggestions && suggestions.length > 0 && (
-              <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-[0_15px_35px_rgba(0,0,0,0.35)]">
+              <ul className="sg-suggestions">
                 {suggestions.map((song) => (
                   <li key={song.id}>
                     <button
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => handleSuggestionClick(song.title)}
-                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-slate-200 transition hover:bg-white/10"
+                      className="sg-suggestion"
                     >
                       <span>{song.title}</span>
-                      <span className="text-xs text-slate-400">{song.album}</span>
+                      <span>{song.album}</span>
                     </button>
                   </li>
                 ))}
@@ -653,24 +688,24 @@ function App() {
           </div>
         </div>
 
-        <div className="mt-6 flex w-full flex-col gap-3 sm:flex-row">
+        <div className="sg-actions">
           <button
             onClick={handleGuess}
             disabled={isFinished || !guess.trim()}
-            className={`flex-1 rounded-2xl px-4 py-3 font-semibold transition ${isFinished || !guess.trim() ? 'cursor-not-allowed bg-white/10 text-slate-400' : 'bg-white/10 text-white hover:bg-white/20'}`}
+            className="sg-button sg-button-secondary sg-submit-guess"
           >
-            <span className="text-xl">✓</span>
+            <span aria-hidden="true">✓</span>
           </button>
           <button
             onClick={startNewRound}
             disabled={isFinished}
-            className={`rounded-2xl px-4 py-3 font-semibold transition ${isFinished ? 'cursor-not-allowed border border-slate-600 bg-slate-700/80 text-slate-400' : 'border border-fuchsia-500/40 text-fuchsia-200 hover:bg-fuchsia-500/10'}`}
+            className="sg-button sg-button-secondary"
           >
             Nové kolo
           </button>
           <button
             onClick={resetGame}
-            className="rounded-2xl border border-cyan-400/50 bg-cyan-500/10 px-4 py-3 font-semibold text-cyan-200 transition hover:bg-cyan-500/15"
+            className="sg-button sg-button-secondary"
           >
             Restart hry
           </button>
@@ -678,12 +713,12 @@ function App() {
 
         {feedback && (
           <div
-            className={`mt-6 w-full rounded-2xl border px-4 py-4 text-sm ${feedback.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/30 bg-rose-500/10 text-rose-300'}`}
+            className={`sg-feedback ${feedback.type === 'success' ? 'is-success' : 'is-error'}`}
           >
             <p className="font-semibold">{feedback.message}</p>
             {feedback.type !== 'success' && (
-              <div className="mt-2 text-slate-300">
-                <p><span className="text-slate-400">Album:</span> {currentSong?.album}</p>
+              <div>
+                <p><span>Album:</span> {currentSong?.album}</p>
               </div>
             )}
           </div>
@@ -691,8 +726,8 @@ function App() {
       </div>
       )}
 
-      <footer className="mx-auto mt-8 max-w-3xl text-center text-sm text-slate-400">
-        <p>Developed by <a href='https://github.com/Kratomchvil' className="text-cyan-400 hover:text-cyan-300" target="_blank" rel="noopener noreferrer">Daniel Kratochvíl</a> • SaulGuesser © {new Date().getFullYear()}</p>
+      <footer className="sg-footer">
+        <p>Developed by <a href='https://github.com/Kratomchvil' target="_blank" rel="noopener noreferrer">Daniel Kratochvíl</a> <span aria-hidden="true">·</span> SaulGuesser © {new Date().getFullYear()}</p>
       </footer>
     </div>
   );
