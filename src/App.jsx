@@ -43,7 +43,7 @@ const songs = [
   { id: 39, title: '471', album: 'Hotel 471', previewUrl: '/songs/Album/Hotel471/471.mp3' },
   { id: 40, title: 'Cestou časom', album: 'Hotel 471', previewUrl: '/songs/Album/Hotel471/Cestou-casom.mp3' },
   { id: 41, title: 'Hotel', album: 'Hotel 471', previewUrl: '/songs/Album/Hotel471/Hotel.mp3' },
-  { id: 42, title: 'Ok', album: 'Hotel 471', previewUrl: '/songs/Album/Hotel471/Ok.mp3' },
+  { id: 42, title: 'O.K.', album: 'Hotel 471', previewUrl: '/songs/Album/Hotel471/Ok.mp3' },
   { id: 43, title: 'Byť tu navždy', album: 'S.A.M.O', previewUrl: '/songs/Album/SAMO/Byt-tu-navzdy.mp3' },
   { id: 44, title: 'Carmen', album: 'S.A.M.O', previewUrl: '/songs/Album/SAMO/Carmen.mp3' },
   { id: 45, title: 'Dažď', album: 'S.A.M.O', previewUrl: '/songs/Album/SAMO/Dazd.mp3' },
@@ -184,118 +184,47 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [gameTimes, setGameTimes] = useState([]);
   const [submitMessage, setSubmitMessage] = useState('');
+  const [countdownValue, setCountdownValue] = useState(3);
+  const [roundStatus, setRoundStatus] = useState('ready');
+
   const audioRef = useRef(null);
   const previewTimerRef = useRef(null);
   const countdownRef = useRef(null);
-  const timeoutRef = useRef(null);
+  const roundCountdownRef = useRef(null);
+  const nextRoundTimeoutRef = useRef(null);
+  const currentSongRef = useRef(null);
   const maxRounds = 10;
   const isFinished = score.total >= maxRounds;
   const round = score.total < maxRounds ? score.total + 1 : maxRounds;
+  const isRoundActive = ['countdown', 'playing'].includes(roundStatus);
+  const shouldShowUtilityChrome = currentView === 'game' && !isRoundActive && !isFinished && score.total === 0;
+  const shouldShowTutorial = shouldShowUtilityChrome;
+  const shouldShowNav = shouldShowUtilityChrome;
+  const showHeroStartButton = roundStatus === 'ready' && score.total === 0;
+  const hasStartedGame = score.total > 0 || isRoundActive;
+  const shouldShowRoundPanel = hasStartedGame;
 
   const pickRandomSong = () => {
     const randomIndex = Math.floor(Math.random() * songs.length);
     return songs[randomIndex];
   };
 
-  const resetGame = () => {
-    stopPreview();
-    stopCountdown();
-    setScore({ correct: 0, total: 0 });
-    setGuess('');
-    setFeedback(null);
-    setShowSuggestions(false);
-    setIsPlayingPreview(false);
-    setCurrentSong(pickRandomSong());
-    setTimeLeft(10);
-    setGameTimes([]);
-    setPlayerName('');
-    setIsRegistered(false);
-    setSubmitMessage('');
-  };
-
-  const enterGame = () => {
-    setIsEntering(true);
-    const transitionDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 520;
-    window.setTimeout(() => setHasEntered(true), transitionDuration);
-  };
-
-  const startNewRound = () => {
-    if (isFinished) {
-      resetGame();
-      return;
+  const clearRoundTimers = () => {
+    if (roundCountdownRef.current) {
+      clearInterval(roundCountdownRef.current);
+      roundCountdownRef.current = null;
     }
-
-    stopPreview();
-    stopCountdown();
-    setCurrentSong(pickRandomSong());
-    setGuess('');
-    setFeedback(null);
-    setShowSuggestions(false);
-    setIsPlayingPreview(false);
-    setTimeLeft(10);
-  };
-
-  useEffect(() => {
-    let isActive = true;
-    setIsLeaderboardLoading(true);
-    loadLeaderboard()
-      .then((entries) => {
-        if (isActive) setLeaderboard(entries);
-      })
-      .catch((error) => {
-        console.error('Failed to load leaderboard', error);
-        if (isActive) {
-          setLeaderboardError(error.message || 'Nepodařilo se načíst leaderboard.');
-        }
-      })
-      .finally(() => {
-        if (isActive) setIsLeaderboardLoading(false);
-      });
-    startNewRound();
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      stopPreview();
-      stopCountdown();
-    };
-  }, []);
-
-  const suggestions = useMemo(() => {
-    if (!guess.trim()) {
-      return [];
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
     }
-
-    return songs
-      .filter((song) => song.title.toLowerCase().includes(guess.trim().toLowerCase()))
-      .slice(0, 4);
-  }, [guess]);
-
-  const averageTime = useMemo(() => {
-    if (!gameTimes.length) return null;
-    return gameTimes.reduce((sum, value) => sum + value, 0) / gameTimes.length;
-  }, [gameTimes]);
-
-  const sortedLeaderboard = useMemo(() => {
-    return [...leaderboard].sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.avgSeconds - b.avgSeconds;
-    });
-  }, [leaderboard]);
-
-  const refreshLeaderboard = async () => {
-    setIsLeaderboardLoading(true);
-    setLeaderboardError('');
-    try {
-      setLeaderboard(await loadLeaderboard());
-    } catch (error) {
-      console.error('Failed to load leaderboard', error);
-      setLeaderboardError(error.message || 'Nepodařilo se načíst leaderboard.');
-    } finally {
-      setIsLeaderboardLoading(false);
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+    if (nextRoundTimeoutRef.current) {
+      clearTimeout(nextRoundTimeoutRef.current);
+      nextRoundTimeoutRef.current = null;
     }
   };
 
@@ -316,21 +245,31 @@ function App() {
       clearInterval(countdownRef.current);
       countdownRef.current = null;
     }
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
   };
 
-  const handleTimeout = () => {
-    setFeedback({
-      type: 'error',
-      message: `Čas vypršel! Správná odpověď byla “${currentSong.title}”.`,
-    });
-    setScore((prev) => ({
-      correct: prev.correct,
-      total: prev.total + 1,
-    }));
+  const resetGame = () => {
+    clearRoundTimers();
+    stopPreview();
+    setScore({ correct: 0, total: 0 });
+    setGuess('');
+    setFeedback(null);
+    setShowSuggestions(false);
+    const nextSong = pickRandomSong();
+    currentSongRef.current = nextSong;
+    setCurrentSong(nextSong);
+    setTimeLeft(10);
+    setGameTimes([]);
+    setPlayerName('');
+    setIsRegistered(false);
+    setSubmitMessage('');
+    setCountdownValue(3);
+    setRoundStatus('ready');
+  };
+
+  const enterGame = () => {
+    setIsEntering(true);
+    const transitionDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 520;
+    window.setTimeout(() => setHasEntered(true), transitionDuration);
   };
 
   const startCountdown = () => {
@@ -348,10 +287,10 @@ function App() {
     }, 1000);
   };
 
-  const playPreview = () => {
-    if (!currentSong || isFinished) return;
+  const playPreview = (song = currentSong) => {
+    if (!song || isFinished) return;
 
-    const previewUrl = getSongPreviewUrl(currentSong);
+    const previewUrl = getSongPreviewUrl(song);
     if (!previewUrl) {
       setFeedback({
         type: 'error',
@@ -363,6 +302,7 @@ function App() {
     stopPreview();
     stopCountdown();
     setTimeLeft(10);
+    setRoundStatus('playing');
 
     const audioEl = audioRef.current;
     if (!audioEl) {
@@ -392,31 +332,97 @@ function App() {
     });
   };
 
-  const handleGuess = () => {
-    if (!currentSong || isFinished) return;
+  const startRoundSequence = () => {
+    if (isFinished) return;
 
+    clearRoundTimers();
+    stopPreview();
+    setGuess('');
+    setFeedback(null);
+    setShowSuggestions(false);
+    const nextSong = pickRandomSong();
+    currentSongRef.current = nextSong;
+    setCurrentSong(nextSong);
+    setTimeLeft(10);
+    setRoundStatus('countdown');
+    setCountdownValue(3);
+
+    const runCountdownStep = (value) => {
+      if (value < 0) {
+        setRoundStatus('playing');
+        playPreview(nextSong);
+        return;
+      }
+
+      setCountdownValue(value);
+      roundCountdownRef.current = window.setTimeout(() => {
+        runCountdownStep(value - 1);
+      }, 900);
+    };
+
+    runCountdownStep(3);
+  };
+
+  const finalizeRound = (isCorrect) => {
+    if (isFinished) return;
+
+    const resolvedSong = currentSongRef.current || currentSong;
+    if (!resolvedSong) return;
+
+    stopPreview();
     stopCountdown();
-
-    const timeUsed = Math.max(0, 10 - timeLeft);
-    const normalizedGuess = guess.trim().toLowerCase();
-    const normalizedTitle = currentSong.title.toLowerCase();
-    const isCorrect = normalizedGuess === normalizedTitle;
+    const currentTime = Math.max(0, 10 - timeLeft);
+    const nextCorrect = score.correct + (isCorrect ? 1 : 0);
+    const nextTotal = score.total + 1;
 
     if (isCorrect) {
-      setGameTimes((prev) => [...prev, timeUsed]);
+      setGameTimes((prev) => [...prev, currentTime]);
     }
 
-    setScore((prev) => ({
-      correct: prev.correct + (isCorrect ? 1 : 0),
-      total: prev.total + 1,
-    }));
+    setScore({
+      correct: nextCorrect,
+      total: nextTotal,
+    });
 
     setFeedback({
       type: isCorrect ? 'success' : 'error',
       message: isCorrect
-        ? `Správná odpověď! Song: ${currentSong.title} | Album: ${currentSong.album}.`
-        : `Špatná odpověď. Správná odpověď byla “${currentSong.title}”.`,
+        ? `Správná odpověď! Song: ${resolvedSong.title} | Album: ${resolvedSong.album}.`
+        : `Špatná odpověď. Správná odpověď byla “${resolvedSong.title}”.`,
     });
+
+    if (nextTotal >= maxRounds) {
+      setRoundStatus('finished');
+      return;
+    }
+
+    setRoundStatus('ready');
+    setCountdownValue(3);
+    setTimeLeft(10);
+    setGuess('');
+    setShowSuggestions(false);
+
+    if (nextRoundTimeoutRef.current) {
+      clearTimeout(nextRoundTimeoutRef.current);
+      nextRoundTimeoutRef.current = null;
+    }
+  };
+
+  const handleTimeout = () => {
+    if (isFinished) return;
+    finalizeRound(false);
+  };
+
+  const handleGuess = () => {
+    if (!currentSong || isFinished || !guess.trim()) return;
+
+    const normalizedGuess = guess.trim().toLowerCase();
+    const normalizedTitle = currentSong.title.toLowerCase();
+    const isCorrect = normalizedGuess === normalizedTitle;
+
+    setGuess('');
+    setShowSuggestions(false);
+    finalizeRound(isCorrect);
   };
 
   const handleSuggestionClick = (title) => {
@@ -457,6 +463,73 @@ function App() {
     }
   };
 
+  const suggestions = useMemo(() => {
+    if (!guess.trim()) {
+      return [];
+    }
+
+    return songs
+      .filter((song) => song.title.toLowerCase().includes(guess.trim().toLowerCase()))
+      .slice(0, 4);
+  }, [guess]);
+
+  const averageTime = useMemo(() => {
+    if (!gameTimes.length) return null;
+    return gameTimes.reduce((sum, value) => sum + value, 0) / gameTimes.length;
+  }, [gameTimes]);
+
+  const sortedLeaderboard = useMemo(() => {
+    return [...leaderboard].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.avgSeconds - b.avgSeconds;
+    });
+  }, [leaderboard]);
+
+  const refreshLeaderboard = async () => {
+    setIsLeaderboardLoading(true);
+    setLeaderboardError('');
+    try {
+      setLeaderboard(await loadLeaderboard());
+    } catch (error) {
+      console.error('Failed to load leaderboard', error);
+      setLeaderboardError(error.message || 'Nepodařilo se načíst leaderboard.');
+    } finally {
+      setIsLeaderboardLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let isActive = true;
+    setIsLeaderboardLoading(true);
+    loadLeaderboard()
+      .then((entries) => {
+        if (isActive) setLeaderboard(entries);
+      })
+      .catch((error) => {
+        console.error('Failed to load leaderboard', error);
+        if (isActive) {
+          setLeaderboardError(error.message || 'Nepodařilo se načíst leaderboard.');
+        }
+      })
+      .finally(() => {
+        if (isActive) setIsLeaderboardLoading(false);
+      });
+
+    const initialSong = pickRandomSong();
+    currentSongRef.current = initialSong;
+    setCurrentSong(initialSong);
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearRoundTimers();
+      stopPreview();
+    };
+  }, []);
+
   if (!hasEntered) {
     return (
       <main className={`sg-app sg-splash ${isEntering ? 'is-exiting' : ''}`}>
@@ -484,40 +557,61 @@ function App() {
     <div className="sg-app sg-main">
       <audio ref={audioRef} preload="auto" />
 
-      <div className="sg-header">
-        <div className="sg-kicker">
-          Jsi pravý fanoušek Saula? Ověř si to přes:
+      {roundStatus === 'countdown' && (
+        <div className="sg-fullscreen-countdown" aria-live="polite" aria-atomic="true">
+          <div key={countdownValue} className="sg-fullscreen-countdown-value">{countdownValue}</div>
         </div>
+      )}
+
+      <div className={`sg-header ${isRoundActive || score.total > 0 ? 'sg-header-compact' : ''}`}>
+        {shouldShowUtilityChrome && (
+          <div className="sg-kicker">
+            Jsi pravý fanoušek Saula? Ověř si to přes:
+          </div>
+        )}
         <h1 className="sg-title">SaulGuesser</h1>
-        <div className="sg-tabs">
-          <button
-            type="button"
-            onClick={() => setCurrentView('game')}
-            className={`sg-tab ${currentView === 'game' ? 'is-active' : ''}`}
-          >
-            Hra
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentView('leaderboard')}
-            className={`sg-tab ${currentView === 'leaderboard' ? 'is-active' : ''}`}
-          >
-            Leaderboard
-          </button>
-        </div>
-        <p className="sg-intro">
-          Spusť hru tak, že zmáčkneš tlačítko „Přehrát ukázku“. Máš přesně 10 sekund na uhodnutí skladby! Když uhodneš nebo neuhodneš, pokračuj dále tlačítkem „Nové kolo".
-        </p>
+        {shouldShowNav && (
+          <div className="sg-tabs">
+            <button
+              type="button"
+              onClick={() => setCurrentView('game')}
+              className={`sg-tab ${currentView === 'game' ? 'is-active' : ''}`}
+            >
+              Hra
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentView('leaderboard')}
+              className={`sg-tab ${currentView === 'leaderboard' ? 'is-active' : ''}`}
+            >
+              Leaderboard
+            </button>
+          </div>
+        )}
+        {shouldShowTutorial && (
+          <p className="sg-intro">
+            Spusť hru tak, že zmáčkneš tlačítko „Přehrát ukázku“. Máš přesně 10 sekund na uhodnutí skladby! Když uhodneš nebo neuhodneš, pokračuj dále tlačítkem „Nové kolo".
+          </p>
+        )}
       </div>
 
       {currentView === 'leaderboard' ? (
         <div className="sg-panel sg-leaderboard">
           <div className="sg-section-heading">
             <div>
-              <p className="sg-eyebrow">Hall of fame</p>
+              
               <h2>Leaderboard</h2>
             </div>
-            <span className="sg-entry-count">{sortedLeaderboard.length} výsledků</span>
+            <div className="sg-section-actions">
+              <button
+                type="button"
+                onClick={() => setCurrentView('game')}
+                className="sg-button sg-button-secondary"
+              >
+                Zpět do hry
+              </button>
+              <span className="sg-entry-count">{sortedLeaderboard.length} výsledků</span>
+            </div>
           </div>
           {!supabaseConfigured && (
             <p className="sg-notice">
@@ -569,161 +663,190 @@ function App() {
           ) : null}
         </div>
       ) : (
-        <div className="sg-panel sg-game">
-        <div className="sg-stats">
-          <div className="sg-stat">
-            <p className="sg-label">Skóre</p>
-            <p className="sg-stat-value">{score.correct} <span>/ {maxRounds}</span></p>
-          </div>
-          <div className="sg-timer">
-            <span className="sg-label">Čas</span>
-            <span className="sg-timer-value">{timeLeft}<small>s</small></span>
-          </div>
-          <div className="sg-stat sg-stat-right">
-            <p className="sg-label">Kolo</p>
-            <p className="sg-stat-value">{round} <span>/ {maxRounds}</span></p>
-          </div>
-        </div>
+        <div className={`sg-panel sg-game ${showHeroStartButton ? 'sg-game-intro' : ''}`}>
+          {!isFinished ? (
+            <>
+              {showHeroStartButton && (
+                <div className="sg-start-panel">
+                  <button
+                    type="button"
+                    className={`sg-hero-button ${isPlayingPreview ? 'is-playing' : ''}`}
+                    onClick={startRoundSequence}
+                  >
+                    <span className="sg-hero-ring" aria-hidden="true" />
+                    <span className="sg-hero-content">
+                      <span className="sg-play-icon" aria-hidden="true">▶</span>
+                      <span className="sg-play-text">Přehrát ukázku</span>
+                    </span>
+                  </button>
+                </div>
+              )}
 
-        {isFinished && (
-          <div className="sg-result">
-            <p className="sg-eyebrow">Konec hry!</p>
-            <h2>Tvoje výsledky</h2>
-            <p>Správné odpovědi: <strong>{score.correct} / {maxRounds}</strong></p>
-            <p>Průměrná doba uhodnutí správných tipů: <strong>{averageTime ? `${averageTime.toFixed(2)} s` : 'N/A'}</strong></p>
-            <p>Zmáčkni „Restart hry“ pro novou hru nebo se zapiš na leaderboard níže.</p>
-          </div>
-        )}
+              {!showHeroStartButton && (
+                <div className="sg-stage">
+                  {hasStartedGame && (
+                    <div className="sg-hero-scoreboard">
+                      <div className="sg-score-pill">
+                        <span className="sg-label">Skóre</span>
+                        <strong>{score.correct} / {maxRounds}</strong>
+                      </div>
 
-        {isFinished && (
-          <div className="sg-register">
-            <h3>Zapsat se do leaderboardu</h3>
-            <form onSubmit={handleLeaderboardSubmit} className="sg-register-form">
-              <label className="sr-only" htmlFor="playerName">Jméno</label>
-              <input
-                id="playerName"
-                value={playerName}
-                onChange={(event) => setPlayerName(event.target.value)}
-                maxLength={40}
-                placeholder="Zadej své jméno"
-                className="sg-input"
-              />
-              <button
-                type="submit"
-                disabled={isRegistered || isSubmitting}
-                className="sg-button sg-button-primary"
-              >
-                {isSubmitting ? 'Ukládám…' : isRegistered ? 'Uloženo' : 'Uložit výsledky'}
-              </button>
-            </form>
-            {submitMessage && (
-              <p className="sg-submit-message">{submitMessage}</p>
-            )}
-            <button
-              type="button"
-              onClick={() => setCurrentView('leaderboard')}
-              className="sg-button sg-button-secondary sg-register-link"
-            >
-              Zobrazit leaderboard
-            </button>
-          </div>
-        )}
+                      <div className="sg-stage-status">
+                        <div className="sg-timer sg-round-timer">
+                          <span className="sg-label">Čas</span>
+                          <span className="sg-timer-value">{timeLeft}<small>s</small></span>
+                        </div>
+                      </div>
 
-        <button
-          onClick={playPreview}
-          disabled={isFinished}
-          className={`sg-button sg-play-button ${isFinished ? 'is-disabled' : ''}`}
-        >
-          <span aria-hidden="true">▶</span>
-          {isPlayingPreview ? 'Přehrávám...' : 'Přehrát ukázku'}
-        </button>
-
-        <div className="sg-guess">
-          <label htmlFor="guess">
-            Tvůj tip
-          </label>
-          <div className="sg-input-wrap">
-            <input
-              id="guess"
-              value={guess}
-              onChange={(event) => {
-                setGuess(event.target.value);
-                setShowSuggestions(true);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Tab' && suggestions.length === 1) {
-                  event.preventDefault();
-                  setGuess(suggestions[0].title);
-                  setShowSuggestions(false);
-                }
-                if (event.key === 'Enter' && guess.trim()) {
-                  event.preventDefault();
-                  handleGuess();
-                }
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
-              placeholder="Napr. Niekde v oblakoch"
-              disabled={isFinished}
-              className={`sg-input ${isFinished ? 'is-disabled' : ''}`}
-            />
-
-            {showSuggestions && suggestions.length > 0 && (
-              <ul className="sg-suggestions">
-                {suggestions.map((song) => (
-                  <li key={song.id}>
-                    <button
-                      type="button"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => handleSuggestionClick(song.title)}
-                      className="sg-suggestion"
-                    >
-                      <span>{song.title}</span>
-                      <span>{song.album}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-
-        <div className="sg-actions">
-          <button
-            onClick={handleGuess}
-            disabled={isFinished || !guess.trim()}
-            className="sg-button sg-button-secondary sg-submit-guess"
-          >
-            <span aria-hidden="true">✓</span>
-          </button>
-          <button
-            onClick={startNewRound}
-            disabled={isFinished}
-            className="sg-button sg-button-secondary"
-          >
-            Nové kolo
-          </button>
-          <button
-            onClick={resetGame}
-            className="sg-button sg-button-secondary"
-          >
-            Restart hry
-          </button>
-        </div>
-
-        {feedback && (
-          <div
-            className={`sg-feedback ${feedback.type === 'success' ? 'is-success' : 'is-error'}`}
-          >
-            <p className="font-semibold">{feedback.message}</p>
-            {feedback.type !== 'success' && (
-              <div>
-                <p><span>Album:</span> {currentSong?.album}</p>
+                      <div className="sg-score-pill">
+                        <span className="sg-label">Kolo</span>
+                        <strong>{round}</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="sg-result-panel">
+              <div className="sg-result">
+                <p className="sg-eyebrow">Konec hry!</p>
+                <h2>Tvoje výsledky</h2>
+                <p>Správné odpovědi: <strong>{score.correct} / {maxRounds}</strong></p>
+                <p>Průměrná doba uhodnutí správných tipů: <strong>{averageTime ? `${averageTime.toFixed(2)} s` : 'N/A'}</strong></p>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+
+              <div className="sg-register">
+                <h3>Zapsat se do leaderboardu</h3>
+                <form onSubmit={handleLeaderboardSubmit} className="sg-register-form">
+                  <label className="sr-only" htmlFor="playerName">Jméno</label>
+                  <input
+                    id="playerName"
+                    value={playerName}
+                    onChange={(event) => setPlayerName(event.target.value)}
+                    maxLength={40}
+                    placeholder="Zadej své jméno"
+                    className="sg-input"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isRegistered || isSubmitting}
+                    className="sg-button sg-button-primary"
+                  >
+                    {isSubmitting ? 'Ukládám…' : isRegistered ? 'Uloženo' : 'Uložit výsledky'}
+                  </button>
+                </form>
+                {submitMessage && (
+                  <p className="sg-submit-message">{submitMessage}</p>
+                )}
+                <div className="sg-register-actions">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentView('leaderboard')}
+                    className="sg-button sg-button-secondary sg-register-link"
+                  >
+                    Zobrazit leaderboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetGame}
+                    className="sg-button sg-button-secondary"
+                  >
+                    Restart hry
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!isFinished && shouldShowRoundPanel && (
+            <>
+              <div className="sg-guess">
+                <label htmlFor="guess">
+                  Tvůj tip
+                </label>
+                <div className="sg-input-wrap">
+                  <input
+                    id="guess"
+                    value={guess}
+                    onChange={(event) => {
+                      setGuess(event.target.value);
+                      setShowSuggestions(true);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Tab' && suggestions.length === 1) {
+                        event.preventDefault();
+                        setGuess(suggestions[0].title);
+                        setShowSuggestions(false);
+                      }
+                      if (event.key === 'Enter' && guess.trim()) {
+                        event.preventDefault();
+                        handleGuess();
+                      }
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
+                    placeholder="Napr. Niekde v oblakoch"
+                    className="sg-input"
+                  />
+
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul className="sg-suggestions">
+                      {suggestions.map((song) => (
+                        <li key={song.id}>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSuggestionClick(song.title)}
+                            className="sg-suggestion"
+                          >
+                            <span>{song.title}</span>
+                            <span>{song.album}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              <div className="sg-actions">
+                <button
+                  onClick={handleGuess}
+                  disabled={!guess.trim()}
+                  className="sg-button sg-button-secondary sg-submit-guess sg-submit-guess-animate"
+                >
+                  <span aria-hidden="true">✓</span>
+                </button>
+                <button
+                  onClick={startRoundSequence}
+                  className="sg-button sg-button-secondary sg-button-highlight"
+                >
+                  Nové kolo
+                </button>
+                <button
+                  onClick={resetGame}
+                  className="sg-button sg-button-secondary"
+                >
+                  Restart hry
+                </button>
+              </div>
+            </>
+          )}
+
+          {feedback && (
+            <div
+              className={`sg-feedback ${feedback.type === 'success' ? 'is-success' : 'is-error'}`}
+            >
+              <p className="font-semibold">{feedback.message}</p>
+              {feedback.type !== 'success' && (
+                <div>
+                  <p><span>Album:</span> {currentSong?.album}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       <footer className="sg-footer">
