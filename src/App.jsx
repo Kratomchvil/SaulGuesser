@@ -416,8 +416,13 @@ function App() {
   const handleGuess = () => {
     if (!currentSong || isFinished || !guess.trim()) return;
 
-    const normalizedGuess = guess.trim().toLowerCase();
-    const normalizedTitle = currentSong.title.toLowerCase();
+    const normalizeAnswer = (value) => value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+    const normalizedGuess = normalizeAnswer(guess);
+    const normalizedTitle = normalizeAnswer(currentSong.title);
     const isCorrect = normalizedGuess === normalizedTitle;
 
     setGuess('');
