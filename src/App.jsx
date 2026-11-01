@@ -61,6 +61,18 @@ const songs = [
   { id: 57, title: 'Motýľ', album: 'Agónia & Extáza', previewUrl: '/songs/Album/Agonia-Extaza/Motyl.mp3' },
 ];
 
+const shuffleSongDeck = (songList) => {
+  const shuffledSongs = [...songList];
+  for (let currentIndex = shuffledSongs.length - 1; currentIndex > 0; currentIndex -= 1) {
+    const swapIndex = Math.floor(Math.random() * (currentIndex + 1));
+    [shuffledSongs[currentIndex], shuffledSongs[swapIndex]] = [
+      shuffledSongs[swapIndex],
+      shuffledSongs[currentIndex],
+    ];
+  }
+  return shuffledSongs;
+};
+
 const slugify = (text) =>
   text
     .normalize('NFD')
@@ -193,6 +205,7 @@ function App() {
   const roundCountdownRef = useRef(null);
   const nextRoundTimeoutRef = useRef(null);
   const currentSongRef = useRef(null);
+  const songDeckRef = useRef([]);
   const maxRounds = 10;
   const isFinished = score.total >= maxRounds;
   const round = score.total < maxRounds ? score.total + 1 : maxRounds;
@@ -205,8 +218,10 @@ function App() {
   const shouldShowRoundPanel = hasStartedGame;
 
   const pickRandomSong = () => {
-    const randomIndex = Math.floor(Math.random() * songs.length);
-    return songs[randomIndex];
+    if (songDeckRef.current.length === 0) {
+      songDeckRef.current = shuffleSongDeck(songs);
+    }
+    return songDeckRef.current.pop();
   };
 
   const clearRoundTimers = () => {
@@ -250,6 +265,7 @@ function App() {
   const resetGame = () => {
     clearRoundTimers();
     stopPreview();
+    songDeckRef.current = shuffleSongDeck(songs);
     setScore({ correct: 0, total: 0 });
     setGuess('');
     setFeedback(null);
